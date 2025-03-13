@@ -1,0 +1,52 @@
+#!/bin/bash
+SUBSCRIPTION_ID=$1
+SUBSCRIPTION_NAME=$2
+echo "SUBSCRIPTION_NAME, SUBSCRIPTION_ID, KEYVAULT, CERT_Name, Created, Expiry, Expiry Date, Expiry Days, Expiry_Months, COMMON NAME, Subject Alt_Names, Thumbprint" > $SUBSCRIPTION_NAME.c KEYVAULTS=$(az keyvault list --query "[].name" --subscription $SUBSCRIPTION_ID -o tsv)
+
+# KEYVAULTS="<space_delimited_list_of_vault_names>"
+
+for KEYVAULT in $KEYVAULTS; do
+    for CERT in $(az keyvault certificate list \
+            --vault-name "$KEYVAULT"\
+            --query "[].name" --subscription $SUBSCRIPTION_ID -o tsv); do
+        CREATED=$(az keyvault certificate show\
+            --vault-name "$KEYVAULT"\
+            --name "$CERT"\
+            --query "attributes.created"--subscription $SUBSCRIPTION_ID -o tsv) 
+        EXPIRES=$(az keyvault certificate show\
+            --vault-name "$KEYVAULT"\
+            --name "$CERT"\
+            --query "attributes.expires" --subscription $SUBSCRIPTION_ID -o tsv) 
+        DOMAINS=$(az keyvault certificate show\
+            --vault-name "$KEYVAULT"\
+            --name "$CERT"--subscription $SUBSCRIPTION_ID
+            --query "*.*.subjectAlternativeNames.dnsNames" | tr -d ',' | tr ']' | sed 's/[[:space:]]*//' | tr "\n" "") 
+        COMMONNAME=$(az keyvault certificate show\
+            --vault-name "$KEYVAULT"\
+            --name "$CERT"--subscription $SUBSCRIPTION_ID
+            --query "*.*.subject[]" | grep CN= | tr -d ',')
+        THUMBPRINT=$(az keyvault certificate show\
+            --vault-name "$KEYVAULT"--subscription $SUBSCRIPTION_ID \
+            --name "$CERT"\
+            --query"" | tr -d ',' | tr ']' | sed 's/[[:space:]]*//' | tail -2)
+        EXPIRY_MONTHS=$(az keyvault certificate show\
+            --vault-name "$KEYVAULT"--subscription $SUBSCRIPTION_ID \
+            --name "$CERT"\
+            --query "*.*.validityInMonths" | tr -d ',' | tr ']' | sed 's/[[:space:]]*// | tr "\n" "") 
+        PYCMD=$(cat <<EOF
+
+from datetime import datetime
+from dateutil import parser
+from dateutil.tz import tzutc
+expire_days = (parser.parse('SEXPIRES') - datetime.utcnow().replace(tzinfo=tzutc())).days
+if expire_days > 0:
+  msg="in {} days". format (expire_days)
+else:
+  msg="already expired!!!"
+print(msg)
+EOF
+        )
+        EXPIRES_DELTA=$(python3 -c "SPYCMD")
+        echo "$SUBSCRIPTION_NAME, $SUBSCRIPTION_ID, SKEYVAULT, SCERT, $CREATED, (Vault: $KEYVAULT) expires on $EXPIRES ($EXPIRES DELTA), $EXPIRES, SEXPIRES_DELTA, $EXPIRY_MONTHS, $COMMONNAME, $DOMAINS, $THI
+    done
+done
