@@ -1,0 +1,59 @@
+name: AZ Keyvault Cert Expiry
+on:
+  push:
+    branches: 
+      - main
+env:
+  WORKSPACE: ${{ github.workspace}}
+jobs:
+  audit:
+    runs-on: uhg-runner
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v2 
+        with:
+          python-version: '3.10'
+      - name: Install dependencies 
+        run: |
+          pip install --upgrade pip
+          pip install pandas
+      - name: Read SP List
+        run: |
+            echo "Reading subscription list from sp_list.json"
+            cat az-keyvault-cert-expiry/sp_list.json
+# Use the content of the file to retrieve data from subscriptions
+      - name: Keyvault Cert Expiry Report
+        run: |
+            az login --service-principal -u ${{ secrets. AZURE_CLIENT_ID}} -p=${{ secrets. AZURE_CLIENT_SECRET }} -t ${{ secrets. AZURE TENANT_ID}}
+            export AZURE_EXTENSION_DIR="${{ github.workspace}}/.azure/mixins"
+            az version
+            mkdir -p SAZURE_EXTENSION_DIR
+            az extension add --name resource-graph
+            az extension list
+            cd az-keyvault-cert-expiry
+            for entry in $(jq -c '.[]' sp_list.json); do
+                subId=$(echo $entry | jqr.id")
+                subName=$(echo $entry | jq -r .name')
+                if az account show --subscription $subId &> /dev/null; then
+                bash keyvault-expiry.sh "$subId" "$subName"
+                bash keyvault-single-report.sh "$subId" "$subName"
+                else
+                echo "Subscription $subId not found. Skipping..."
+                fi
+                done
+                echo "SCRIPT DONE"
+      - name: Email results
+        uses: uhg-actions/action-send-mail@v3
+        with:
+          server_address: ctc-smtp-relay-nonprd-k8s.optum.com 
+          server_port: 25
+          subject: Azure KeyVault Cert Expiry Report
+          body: Please find attached Azure Keyvualt Certs Expiry Report Status 
+          attachments: |
+            ${{ github.workspace }}/az-keyvault-cert-expiry/*.csv
+            from: notifications@github.com
+            to: sainadhpolabathula@gamil.com
